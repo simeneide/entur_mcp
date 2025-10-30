@@ -1,0 +1,41 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "entur-mcp"
+version = "0.1.0"
+description = "Model Context Protocol server for Entur's Journey Planner APIs."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {file = "LICENSE"}
+authors = [
+    {name = "Simen Eide"},
+]
+dependencies = [
+    "anyio>=4.3",
+    "httpx>=0.28",
+    "mcp[cli]>=1.15",
+    "pydantic>=2.8",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.2",
+    "pytest-asyncio>=0.23",
+    "respx>=0.21",
+]
+
+[project.scripts]
+entur-mcp = "entur_mcp.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/simeneide/entur-mcp"
+Repository = "https://github.com/simeneide/entur-mcp"
+Changelog = "https://github.com/simeneide/entur-mcp/releases"
+
+[tool.pytest.ini_options]
+addopts = "-q"
+pythonpath = [
+    "entur_mcp",
+]
