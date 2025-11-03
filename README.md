@@ -2,6 +2,11 @@
 
 `entur-mcp` is a [FastMCP](https://gofastmcp.com/) server that exposes Entur's Journey Planner APIs through the [Model Context Protocol](https://spec.modelcontextprotocol.io). It lets assistants and automations plan trips, inspect departures, and list service alerts for Norwegian public transport.
 
+For demonstration purposes, it is running on a public endpoint at:
+```
+https://eide-entur.fastmcp.app/mcp
+```
+
 ## Features
 - `plan_trip`: multimodal journey planning between two places.
 - `stop_departures`: realtime departures for a stop place.
