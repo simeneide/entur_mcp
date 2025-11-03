@@ -128,8 +128,7 @@ class PlanTripArgs(BaseModel):
     transport_modes: Optional[list[str]] = Field(
         default=None,
         description="Optional list of transport modes to prioritise "
-        "(e.g. ['rail', 'bus']). Valid modes: "
-        + ", ".join(TransportMode),
+        "(e.g. ['rail', 'bus']). Valid modes: " + ", ".join(TransportMode),
     )
 
 
@@ -246,7 +245,9 @@ def _validate_location_arguments(
         )
 
 
-def _validate_allowed_values(values: Iterable[str] | None, allowed: Sequence[str], label: str) -> None:
+def _validate_allowed_values(
+    values: Iterable[str] | None, allowed: Sequence[str], label: str
+) -> None:
     """Ensure optional lists only contain accepted values."""
 
     if not values:
@@ -254,8 +255,7 @@ def _validate_allowed_values(values: Iterable[str] | None, allowed: Sequence[str
     invalid = sorted({value for value in values if value not in allowed})
     if invalid:
         raise ValueError(
-            f"Invalid {label}: {', '.join(invalid)}. "
-            f"Allowed values are: {', '.join(allowed)}."
+            f"Invalid {label}: {', '.join(invalid)}. Allowed values are: {', '.join(allowed)}."
         )
 
 
@@ -398,3 +398,6 @@ async def service_alerts(arguments: ServiceAlertsArgs) -> ServiceAlertsResult:
 mcp = server
 
 __all__ = ["server", "mcp"]
+
+if __name__ == "__main__":
+    mcp.run()
