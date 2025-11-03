@@ -9,13 +9,9 @@ description = "Model Context Protocol server for Entur's Journey Planner APIs."
 readme = "README.md"
 requires-python = ">=3.10"
 license = {file = "LICENSE"}
-authors = [
-    {name = "Simen Eide"},
-]
 dependencies = [
-    "anyio>=4.3",
+    "fastmcp>=2.11",
     "httpx>=0.28",
-    "mcp[cli]>=1.15",
     "pydantic>=2.8",
 ]
 

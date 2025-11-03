@@ -1,6 +1,6 @@
 # Entur MCP Server
 
-`entur-mcp` exposes Entur's Journey Planner APIs through the [Model Context Protocol](https://spec.modelcontextprotocol.io), enabling assistants and automations to plan trips, inspect departures, and list service alerts for Norwegian public transport.
+`entur-mcp` is a [FastMCP](https://gofastmcp.com/) server that exposes Entur's Journey Planner APIs through the [Model Context Protocol](https://spec.modelcontextprotocol.io). It lets assistants and automations plan trips, inspect departures, and list service alerts for Norwegian public transport.
 
 ## Features
 - `plan_trip`: multimodal journey planning between two places.
@@ -26,15 +26,33 @@ pip install entur-mcp
 
 ## Usage
 
-```bash
-# Run over stdio (default for MCP clients)
-entur-mcp
+### FastMCP CLI (recommended)
 
-# Or explicitly
+The project ships with a FastMCP server object named `server`. Run it with the FastMCP CLI (optionally via `uv` to pick up the project environment):
+
+```bash
+# From the repository root
+uv run fastmcp run entur_mcp/server.py
+
+# Explicit object selection (optional)
+uv run fastmcp run entur_mcp/server.py:server
+
+# Streamable HTTP transport for remote agents
+uv run fastmcp run entur_mcp/server.py --transport http --host 0.0.0.0 --port 8000
+# -> exposes https://localhost:8000/mcp by default
+```
+
+### Convenience entrypoint
+
+A stdio wrapper is still provided for compatibility:
+
+```bash
+entur-mcp          # via console script
+# or
 python -m entur_mcp
 ```
 
-The server announces its tools and schemas according to the MCP specification, so any compliant client can consume it.
+The server registers its tools and schemas with MCP clients automatically.
 
 ## Configuration
 
@@ -56,6 +74,16 @@ pytest
 ```
 
 The test suite uses `respx` to mock Entur's HTTP APIs. No network calls are made during tests.
+
+## FastMCP Cloud deployment
+
+FastMCP Cloud makes your server available at a public HTTPS URL. Deploy in three steps:
+
+1. Push this repository to GitHub (public or private).
+2. Sign in to [fastmcp.cloud](https://fastmcp.cloud) with your GitHub account and create a new project.
+3. Point the project at your repo and use `entur_mcp/server.py:server` as the entrypoint.
+
+FastMCP Cloud installs dependencies from `pyproject.toml`, builds the project, and returns a URL such as `https://<project>.fastmcp.app/mcp`. Share that endpoint with MCP-compatible agents. (Replace the URL here once your deployment is live.)
 
 ## License
 

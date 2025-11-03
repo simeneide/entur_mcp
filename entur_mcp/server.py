@@ -1,19 +1,19 @@
-"""MCP server entrypoint exposing Entur Journey Planner tooling."""
+"""FastMCP server exposing Entur Journey Planner tooling."""
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Iterable, Mapping, Optional, Sequence
 
-from mcp import types
-from mcp.server import Server
+from fastmcp import FastMCP
+from pydantic import BaseModel, Field
 
-from .models import (
+from entur_mcp.models import (
     NearestPlacesResult,
     ServiceAlertsResult,
     StopDeparturesResult,
     TripPlanResult,
 )
-from .service import (
+from entur_mcp.service import (
     AlertLookupError,
     DeparturesLookupError,
     EnturService,
@@ -22,21 +22,7 @@ from .service import (
     TripPlanningError,
 )
 
-server = Server(
-    name="entur-journey-planner",
-    version="0.1.0",
-    instructions=(
-        "This server provides access to Entur's Journey Planner APIs for Norwegian public transport. "
-        "Always mention Entur as the data source and follow their usage guidelines, including supplying "
-        "a descriptive ET-Client-Name header when reusing this service. Results are derived from real-time "
-        "and timetable data provided by Entur partners."
-    ),
-    website_url="https://developer.entur.org",
-)
-
-service = EnturService()
-
-TRANSPORT_MODES = [
+TransportMode = (
     "air",
     "bus",
     "cableway",
@@ -51,9 +37,9 @@ TRANSPORT_MODES = [
     "monorail",
     "coach",
     "unknown",
-]
+)
 
-SEVERITY_LEVELS = [
+SeverityLevel = (
     "unknown",
     "noImpact",
     "verySlight",
@@ -62,307 +48,185 @@ SEVERITY_LEVELS = [
     "severe",
     "verySevere",
     "undefined",
-]
+)
 
-PLAN_TRIP_INPUT_SCHEMA: Dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "from_place_id": {
-            "type": "string",
-            "description": "Entur stop place id for the origin (e.g. 'NSR:StopPlace:58404').",
-        },
-        "from_text": {
-            "type": "string",
-            "description": "Free-text origin (e.g. 'Nationaltheatret'). The server will resolve this via Entur's geocoder.",
-        },
-        "from_latitude": {
-            "type": "number",
-            "description": "Latitude for the origin in decimal degrees (WGS84).",
-        },
-        "from_longitude": {
-            "type": "number",
-            "description": "Longitude for the origin in decimal degrees (WGS84).",
-        },
-        "to_place_id": {
-            "type": "string",
-            "description": "Entur stop place id for the destination.",
-        },
-        "to_text": {
-            "type": "string",
-            "description": "Free-text destination. The server will resolve this via Entur's geocoder.",
-        },
-        "to_latitude": {
-            "type": "number",
-            "description": "Latitude for the destination in decimal degrees (WGS84).",
-        },
-        "to_longitude": {
-            "type": "number",
-            "description": "Longitude for the destination in decimal degrees (WGS84).",
-        },
-        "departure_time": {
-            "type": "string",
-            "description": "ISO8601 timestamp for desired departure (defaults to now if omitted).",
-        },
-        "arrive_by": {
-            "type": "boolean",
-            "description": "Interpret departure_time as latest arrival time instead of earliest departure.",
-            "default": False,
-        },
-        "page_cursor": {
-            "type": "string",
-            "description": "Pagination cursor returned by a previous trip search to fetch more results.",
-        },
-        "num_trip_patterns": {
-            "type": "integer",
-            "description": "Maximum number of itineraries to return (1-10, default 5).",
-            "minimum": 1,
-            "maximum": 10,
-            "default": 5,
-        },
-        "search_window": {
-            "type": "integer",
-            "description": "Override search window in minutes. Leave blank to let Entur decide.",
-            "minimum": 1,
-        },
-        "transport_modes": {
-            "type": "array",
-            "description": "Optional list of transport modes to prioritise (e.g. ['rail', 'bus']).",
-            "items": {"type": "string", "enum": TRANSPORT_MODES},
-        },
-    },
-    "required": [],
-    "additionalProperties": False,
-}
+INSTRUCTIONS = (
+    "This server provides access to Entur's Journey Planner APIs for Norwegian public transport. "
+    "Always mention Entur as the data source and follow their usage guidelines, including supplying "
+    "a descriptive ET-Client-Name header when reusing this service. Results are derived from real-time "
+    "and timetable data provided by Entur partners."
+)
 
-STOP_DEPARTURES_INPUT_SCHEMA: Dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "stop_place_id": {
-            "type": "string",
-            "description": "Entur stop place id to fetch departures for.",
-        },
-        "stop_text": {
-            "type": "string",
-            "description": "Free-text stop description to resolve via Entur's geocoder.",
-        },
-        "stop_latitude": {
-            "type": "number",
-            "description": "Latitude to resolve the nearest stop place.",
-        },
-        "stop_longitude": {
-            "type": "number",
-            "description": "Longitude to resolve the nearest stop place.",
-        },
-        "start_time": {
-            "type": "string",
-            "description": "ISO8601 timestamp to anchor the departures window (default now).",
-        },
-        "time_range_minutes": {
-            "type": "integer",
-            "description": "Number of minutes to include after start_time (default 120 minutes).",
-            "minimum": 1,
-            "default": 120,
-        },
-        "number_of_departures": {
-            "type": "integer",
-            "description": "Maximum number of departures to return (default 10, max 50).",
-            "minimum": 1,
-            "maximum": 50,
-            "default": 10,
-        },
-    },
-    "required": [],
-    "additionalProperties": False,
-}
+server = FastMCP(
+    name="entur-journey-planner",
+    version="0.1.0",
+    instructions=INSTRUCTIONS,
+    website_url="https://developer.entur.org",
+)
 
-NEAREST_PLACES_INPUT_SCHEMA: Dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "latitude": {
-            "type": "number",
-            "description": "Latitude of the location to search from.",
-        },
-        "longitude": {
-            "type": "number",
-            "description": "Longitude of the location to search from.",
-        },
-        "text": {
-            "type": "string",
-            "description": "Free-text location; geocoded to coordinates before searching.",
-        },
-        "maximum_distance": {
-            "type": "number",
-            "description": "Maximum walking distance (meters) to consider (default 2000).",
-            "minimum": 1,
-            "default": 2000,
-        },
-        "maximum_results": {
-            "type": "integer",
-            "description": "Maximum number of places to return (default 10).",
-            "minimum": 1,
-            "maximum": 50,
-            "default": 10,
-        },
-        "include_place_types": {
-            "type": "array",
-            "description": "Optional list of Entur place types to include (e.g. ['stopPlace', 'quay']).",
-            "items": {"type": "string"},
-        },
-    },
-    "required": [],
-    "additionalProperties": False,
-}
-
-SERVICE_ALERTS_INPUT_SCHEMA: Dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "stop_place_id": {
-            "type": "string",
-            "description": "Filter alerts affecting a specific stop place id.",
-        },
-        "stop_text": {
-            "type": "string",
-            "description": "Free-text stop description to resolve before fetching alerts.",
-        },
-        "severities": {
-            "type": "array",
-            "description": "Optional subset of severity levels to include.",
-            "items": {"type": "string", "enum": SEVERITY_LEVELS},
-        },
-        "limit": {
-            "type": "integer",
-            "description": "Maximum number of alerts to return (default 20).",
-            "minimum": 1,
-            "default": 20,
-        },
-    },
-    "required": [],
-    "additionalProperties": False,
-}
-
-PLAN_TRIP_OUTPUT_SCHEMA = TripPlanResult.model_json_schema()
-STOP_DEPARTURES_OUTPUT_SCHEMA = StopDeparturesResult.model_json_schema()
-NEAREST_PLACES_OUTPUT_SCHEMA = NearestPlacesResult.model_json_schema()
-SERVICE_ALERTS_OUTPUT_SCHEMA = ServiceAlertsResult.model_json_schema()
+service = EnturService()
 
 
-@server.list_tools()
-async def list_tools() -> List[types.Tool]:
-    """Expose the available Entur tools to MCP clients."""
+class PlanTripArgs(BaseModel):
+    """Arguments for the plan_trip tool."""
 
-    return [
-        types.Tool(
-            name="plan_trip",
-            description=(
-                "Plan door-to-door trips between two places using Entur's multimodal journey planner. "
-                "Provide stop ids, free text, or coordinates for the origin and destination."
-            ),
-            inputSchema=PLAN_TRIP_INPUT_SCHEMA,
-            outputSchema=PLAN_TRIP_OUTPUT_SCHEMA,
-        ),
-        types.Tool(
-            name="stop_departures",
-            description=(
-                "Retrieve upcoming departures for a specific stop place, including realtime delays when available."
-            ),
-            inputSchema=STOP_DEPARTURES_INPUT_SCHEMA,
-            outputSchema=STOP_DEPARTURES_OUTPUT_SCHEMA,
-        ),
-        types.Tool(
-            name="nearest_places",
-            description=(
-                "Find nearby transport stops, quays, or other transit facilities based on coordinates or a location name."
-            ),
-            inputSchema=NEAREST_PLACES_INPUT_SCHEMA,
-            outputSchema=NEAREST_PLACES_OUTPUT_SCHEMA,
-        ),
-        types.Tool(
-            name="service_alerts",
-            description=(
-                "List active service alerts and disruptions published through Entur, optionally filtered by stop or severity."
-            ),
-            inputSchema=SERVICE_ALERTS_INPUT_SCHEMA,
-            outputSchema=SERVICE_ALERTS_OUTPUT_SCHEMA,
-        ),
-    ]
-
-
-@server.call_tool()
-async def call_tool(tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
-    """Dispatch tool invocations to the Entur service."""
-
-    try:
-        if tool_name == "plan_trip":
-            _validate_location_arguments(arguments, prefixes=("from", "to"))
-            result = await service.plan_trip(
-                from_place_id=arguments.get("from_place_id"),
-                from_text=arguments.get("from_text"),
-                from_latitude=arguments.get("from_latitude"),
-                from_longitude=arguments.get("from_longitude"),
-                to_place_id=arguments.get("to_place_id"),
-                to_text=arguments.get("to_text"),
-                to_latitude=arguments.get("to_latitude"),
-                to_longitude=arguments.get("to_longitude"),
-                departure_time=arguments.get("departure_time"),
-                arrive_by=bool(arguments.get("arrive_by")),
-                page_cursor=arguments.get("page_cursor"),
-                num_trip_patterns=_coerce_int(arguments.get("num_trip_patterns"), default=5),
-                search_window=_coerce_int(arguments.get("search_window")),
-                transport_modes=_coerce_str_list(arguments.get("transport_modes")),
-            )
-            return result.model_dump(mode="json")
-
-        if tool_name == "stop_departures":
-            _validate_location_arguments(arguments, prefixes=("stop",))
-            result = await service.get_stop_departures(
-                stop_place_id=arguments.get("stop_place_id"),
-                stop_text=arguments.get("stop_text"),
-                stop_latitude=arguments.get("stop_latitude"),
-                stop_longitude=arguments.get("stop_longitude"),
-                start_time=arguments.get("start_time"),
-                time_range_minutes=_coerce_int(arguments.get("time_range_minutes"), default=120),
-                number_of_departures=_coerce_int(arguments.get("number_of_departures"), default=10),
-            )
-            return result.model_dump(mode="json")
-
-        if tool_name == "nearest_places":
-            if not (
-                (_is_number(arguments.get("latitude")) and _is_number(arguments.get("longitude")))
-                or arguments.get("text")
-            ):
-                raise ValueError(
-                    "Provide either both 'latitude' and 'longitude' or a 'text' query for nearest searches."
-                )
-            result = await service.get_nearest_places(
-                latitude=arguments.get("latitude"),
-                longitude=arguments.get("longitude"),
-                text=arguments.get("text"),
-                maximum_distance=float(arguments.get("maximum_distance")) if arguments.get("maximum_distance") else 2000.0,
-                maximum_results=_coerce_int(arguments.get("maximum_results"), default=10),
-                include_place_types=_coerce_str_list(arguments.get("include_place_types")),
-            )
-            return result.model_dump(mode="json")
-
-        if tool_name == "service_alerts":
-            if arguments.get("stop_place_id") or arguments.get("stop_text"):
-                _validate_location_arguments(arguments, prefixes=("stop",))
-            result = await service.get_service_alerts(
-                stop_place_id=arguments.get("stop_place_id"),
-                stop_text=arguments.get("stop_text"),
-                severities=_coerce_str_list(arguments.get("severities")),
-                limit=_coerce_int(arguments.get("limit"), default=20),
-            )
-            return result.model_dump(mode="json")
-
-    except (LocationLookupError, TripPlanningError, DeparturesLookupError, AlertLookupError) as exc:
-        raise ValueError(str(exc)) from exc
-    except EnturServiceError as exc:
-        raise ValueError(f"Entur service error: {exc}") from exc
-
-    raise ValueError(f"Unknown tool '{tool_name}'.")
+    from_place_id: Optional[str] = Field(
+        default=None,
+        description="Entur stop place id for the origin (e.g. 'NSR:StopPlace:58404').",
+    )
+    from_text: Optional[str] = Field(
+        default=None,
+        description="Free-text origin. The server resolves this using Entur's geocoder.",
+    )
+    from_latitude: Optional[float] = Field(
+        default=None,
+        description="Origin latitude in decimal degrees (WGS84).",
+    )
+    from_longitude: Optional[float] = Field(
+        default=None,
+        description="Origin longitude in decimal degrees (WGS84).",
+    )
+    to_place_id: Optional[str] = Field(
+        default=None,
+        description="Entur stop place id for the destination.",
+    )
+    to_text: Optional[str] = Field(
+        default=None,
+        description="Free-text destination. The server resolves this using Entur's geocoder.",
+    )
+    to_latitude: Optional[float] = Field(
+        default=None,
+        description="Destination latitude in decimal degrees (WGS84).",
+    )
+    to_longitude: Optional[float] = Field(
+        default=None,
+        description="Destination longitude in decimal degrees (WGS84).",
+    )
+    departure_time: Optional[str] = Field(
+        default=None,
+        description="ISO8601 timestamp for desired departure (defaults to now).",
+    )
+    arrive_by: bool = Field(
+        default=False,
+        description="Interpret departure_time as latest arrival instead of earliest departure.",
+    )
+    page_cursor: Optional[str] = Field(
+        default=None,
+        description="Pagination cursor returned by a previous trip search.",
+    )
+    num_trip_patterns: int = Field(
+        default=5,
+        ge=1,
+        le=10,
+        description="Maximum number of itineraries to return (1-10).",
+    )
+    search_window: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description="Override search window in minutes. Leave blank for Entur default.",
+    )
+    transport_modes: Optional[list[str]] = Field(
+        default=None,
+        description="Optional list of transport modes to prioritise "
+        "(e.g. ['rail', 'bus']). Valid modes: "
+        + ", ".join(TransportMode),
+    )
 
 
-def _validate_location_arguments(arguments: Dict[str, Any], *, prefixes: Sequence[str]) -> None:
+class StopDeparturesArgs(BaseModel):
+    """Arguments for the stop_departures tool."""
+
+    stop_place_id: Optional[str] = Field(
+        default=None,
+        description="Entur stop place id to fetch departures for.",
+    )
+    stop_text: Optional[str] = Field(
+        default=None,
+        description="Free-text stop description to resolve via Entur's geocoder.",
+    )
+    stop_latitude: Optional[float] = Field(
+        default=None,
+        description="Latitude used to resolve the nearest stop place.",
+    )
+    stop_longitude: Optional[float] = Field(
+        default=None,
+        description="Longitude used to resolve the nearest stop place.",
+    )
+    start_time: Optional[str] = Field(
+        default=None,
+        description="ISO8601 timestamp anchoring the departures window (defaults to now).",
+    )
+    time_range_minutes: int = Field(
+        default=120,
+        ge=1,
+        description="Number of minutes to include after start_time.",
+    )
+    number_of_departures: int = Field(
+        default=10,
+        ge=1,
+        le=50,
+        description="Maximum number of departures to return (1-50).",
+    )
+
+
+class NearestPlacesArgs(BaseModel):
+    """Arguments for the nearest_places tool."""
+
+    latitude: Optional[float] = Field(
+        default=None,
+        description="Latitude of the location to search from.",
+    )
+    longitude: Optional[float] = Field(
+        default=None,
+        description="Longitude of the location to search from.",
+    )
+    text: Optional[str] = Field(
+        default=None,
+        description="Free-text location. The server geocodes this before searching.",
+    )
+    maximum_distance: float = Field(
+        default=2000.0,
+        gt=0,
+        description="Maximum walking distance (meters) to consider.",
+    )
+    maximum_results: int = Field(
+        default=10,
+        ge=1,
+        le=50,
+        description="Maximum number of places to return (1-50).",
+    )
+    include_place_types: Optional[list[str]] = Field(
+        default=None,
+        description="Optional list of Entur place types to include (e.g. ['stopPlace', 'quay']).",
+    )
+
+
+class ServiceAlertsArgs(BaseModel):
+    """Arguments for the service_alerts tool."""
+
+    stop_place_id: Optional[str] = Field(
+        default=None,
+        description="Filter alerts affecting a specific stop place id.",
+    )
+    stop_text: Optional[str] = Field(
+        default=None,
+        description="Free-text stop description to resolve before fetching alerts.",
+    )
+    severities: Optional[list[str]] = Field(
+        default=None,
+        description="Optional subset of severity levels to include. "
+        "Valid levels: " + ", ".join(SeverityLevel),
+    )
+    limit: int = Field(
+        default=20,
+        ge=1,
+        description="Maximum number of alerts to return.",
+    )
+
+
+def _validate_location_arguments(
+    arguments: Mapping[str, object], *, prefixes: Sequence[str]
+) -> None:
     """Ensure location inputs contain resolvable hints for each prefix."""
 
     for prefix in prefixes:
@@ -371,37 +235,166 @@ def _validate_location_arguments(arguments: Dict[str, Any], *, prefixes: Sequenc
         lat = arguments.get(f"{prefix}_latitude")
         lon = arguments.get(f"{prefix}_longitude")
 
-        if place_id or text:
+        has_coordinates = lat is not None and lon is not None
+
+        if place_id or text or has_coordinates:
             continue
-        if _is_number(lat) and _is_number(lon):
-            continue
+
         raise ValueError(
-            f"Provide either '{prefix}_place_id', '{prefix}_text', or both '{prefix}_latitude' and '{prefix}_longitude'."
+            f"Provide either '{prefix}_place_id', '{prefix}_text', or both "
+            f"'{prefix}_latitude' and '{prefix}_longitude'."
         )
 
 
-def _is_number(value: Any) -> bool:
+def _validate_allowed_values(values: Iterable[str] | None, allowed: Sequence[str], label: str) -> None:
+    """Ensure optional lists only contain accepted values."""
+
+    if not values:
+        return
+    invalid = sorted({value for value in values if value not in allowed})
+    if invalid:
+        raise ValueError(
+            f"Invalid {label}: {', '.join(invalid)}. "
+            f"Allowed values are: {', '.join(allowed)}."
+        )
+
+
+@server.tool(
+    name="plan_trip",
+    description=(
+        "Plan door-to-door trips between two places using Entur's multimodal journey planner. "
+        "Provide stop ids, free text, or coordinates for the origin and destination."
+    ),
+    output_schema=TripPlanResult.model_json_schema(),
+)
+async def plan_trip(arguments: PlanTripArgs) -> TripPlanResult:
+    """Plan a trip between two locations."""
+
+    data = arguments.model_dump()
+    _validate_location_arguments(data, prefixes=("from", "to"))
+    _validate_allowed_values(arguments.transport_modes, TransportMode, "transport modes")
+
     try:
-        return value is not None and float(value) == float(value)
-    except (TypeError, ValueError):
-        return False
+        result = await service.plan_trip(
+            from_place_id=arguments.from_place_id,
+            from_text=arguments.from_text,
+            from_latitude=arguments.from_latitude,
+            from_longitude=arguments.from_longitude,
+            to_place_id=arguments.to_place_id,
+            to_text=arguments.to_text,
+            to_latitude=arguments.to_latitude,
+            to_longitude=arguments.to_longitude,
+            departure_time=arguments.departure_time,
+            arrive_by=arguments.arrive_by,
+            page_cursor=arguments.page_cursor,
+            num_trip_patterns=arguments.num_trip_patterns,
+            search_window=arguments.search_window,
+            transport_modes=arguments.transport_modes,
+        )
+    except (LocationLookupError, TripPlanningError) as exc:
+        raise ValueError(str(exc)) from exc
+    except EnturServiceError as exc:
+        raise ValueError(f"Entur service error: {exc}") from exc
+
+    return result
 
 
-def _coerce_int(value: Any, *, default: int | None = None) -> Optional[int]:
-    if value is None:
-        return default
+@server.tool(
+    name="stop_departures",
+    description=(
+        "Retrieve upcoming departures for a specific stop place, including realtime delays when available."
+    ),
+    output_schema=StopDeparturesResult.model_json_schema(),
+)
+async def stop_departures(arguments: StopDeparturesArgs) -> StopDeparturesResult:
+    """Fetch realtime departures for a stop place."""
+
+    data = arguments.model_dump()
+    _validate_location_arguments(data, prefixes=("stop",))
+
     try:
-        return int(value)
-    except (TypeError, ValueError):
-        raise ValueError(f"Expected integer-compatible value, received {value!r}.") from None
+        result = await service.get_stop_departures(
+            stop_place_id=arguments.stop_place_id,
+            stop_text=arguments.stop_text,
+            stop_latitude=arguments.stop_latitude,
+            stop_longitude=arguments.stop_longitude,
+            start_time=arguments.start_time,
+            time_range_minutes=arguments.time_range_minutes,
+            number_of_departures=arguments.number_of_departures,
+        )
+    except (LocationLookupError, DeparturesLookupError) as exc:
+        raise ValueError(str(exc)) from exc
+    except EnturServiceError as exc:
+        raise ValueError(f"Entur service error: {exc}") from exc
+
+    return result
 
 
-def _coerce_str_list(value: Any) -> Optional[List[str]]:
-    if value is None:
-        return None
-    if isinstance(value, str):
-        return [value]
+@server.tool(
+    name="nearest_places",
+    description=(
+        "Find nearby transport stops, quays, or other transit facilities based on coordinates or a location name."
+    ),
+    output_schema=NearestPlacesResult.model_json_schema(),
+)
+async def nearest_places(arguments: NearestPlacesArgs) -> NearestPlacesResult:
+    """Find nearby transit places using Entur's nearest lookup."""
+
+    has_coordinates = arguments.latitude is not None and arguments.longitude is not None
+    if not (has_coordinates or arguments.text):
+        raise ValueError(
+            "Provide either both 'latitude' and 'longitude' or a 'text' query for nearest searches."
+        )
+
     try:
-        return [str(item) for item in value if item is not None]
-    except TypeError as exc:  # pragma: no cover - defensive guard for non-iterables
-        raise ValueError("Expected a list of strings.") from exc
+        result = await service.get_nearest_places(
+            latitude=arguments.latitude,
+            longitude=arguments.longitude,
+            text=arguments.text,
+            maximum_distance=float(arguments.maximum_distance),
+            maximum_results=arguments.maximum_results,
+            include_place_types=arguments.include_place_types,
+        )
+    except LocationLookupError as exc:
+        raise ValueError(str(exc)) from exc
+    except EnturServiceError as exc:
+        raise ValueError(f"Entur service error: {exc}") from exc
+
+    return result
+
+
+@server.tool(
+    name="service_alerts",
+    description=(
+        "List active service alerts and disruptions published through Entur, optionally filtered by stop or severity."
+    ),
+    output_schema=ServiceAlertsResult.model_json_schema(),
+)
+async def service_alerts(arguments: ServiceAlertsArgs) -> ServiceAlertsResult:
+    """Retrieve current service alerts from Entur."""
+
+    data = arguments.model_dump()
+    if arguments.stop_place_id or arguments.stop_text:
+        _validate_location_arguments(data, prefixes=("stop",))
+
+    _validate_allowed_values(arguments.severities, SeverityLevel, "severity levels")
+
+    try:
+        result = await service.get_service_alerts(
+            stop_place_id=arguments.stop_place_id,
+            stop_text=arguments.stop_text,
+            severities=arguments.severities,
+            limit=arguments.limit,
+        )
+    except (LocationLookupError, AlertLookupError) as exc:
+        raise ValueError(str(exc)) from exc
+    except EnturServiceError as exc:
+        raise ValueError(f"Entur service error: {exc}") from exc
+
+    return result
+
+
+# Backwards compatibility alias for earlier imports expecting `mcp.server.Server`
+mcp = server
+
+__all__ = ["server", "mcp"]
