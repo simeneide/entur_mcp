@@ -61,7 +61,7 @@ server = FastMCP(
     name="entur-journey-planner",
     version="0.1.0",
     instructions=INSTRUCTIONS,
-    website_url="https://developer.entur.org",
+    # website_url="https://developer.entur.org",
 )
 
 service = EnturService()
