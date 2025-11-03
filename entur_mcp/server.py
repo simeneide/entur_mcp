@@ -106,7 +106,7 @@ class PlanTripArgs(BaseModel):
         default=None,
         description="ISO8601 timestamp for desired departure (defaults to now).",
     )
-    arrive_by: bool = Field(
+    arrive_by: Optional[bool] = Field(
         default=False,
         description="Interpret departure_time as latest arrival instead of earliest departure.",
     )
@@ -114,7 +114,7 @@ class PlanTripArgs(BaseModel):
         default=None,
         description="Pagination cursor returned by a previous trip search.",
     )
-    num_trip_patterns: int = Field(
+    num_trip_patterns: Optional[int] = Field(
         default=5,
         ge=1,
         le=10,
@@ -394,10 +394,12 @@ async def service_alerts(arguments: ServiceAlertsArgs) -> ServiceAlertsResult:
     return result
 
 
-# Backwards compatibility alias for earlier imports expecting `mcp.server.Server`
-mcp = server
+@server.tool
+def greet(name: str) -> str:
+    return f"Hello, {name}!"
 
-__all__ = ["server", "mcp"]
+
+__all__ = ["server"]
 
 if __name__ == "__main__":
-    mcp.run()
+    server.run()
